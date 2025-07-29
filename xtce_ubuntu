@@ -85,6 +85,9 @@
 					<Enumeration value="7" label="ENUM_VALUE_7" />
 				</EnumerationList>
 			</EnumeratedParameterType>
+			<IntegerParameterType name="uint8_t" signed="false">
+				<IntegerDataEncoding sizeInBits="8"/>
+			</IntegerParameterType>
 			<BooleanParameterType name="Thruster_Status_Type" zeroStringValue="OFF" oneStringValue="ON">
 				<UnitSet />
 				<IntegerDataEncoding sizeInBits="8" />
@@ -104,7 +107,7 @@
 			<Parameter name="OrbitNumberCumulative" parameterTypeRef="uint32_t" /> -->
 			<Parameter name="ElapsedSeconds" parameterTypeRef="uint32_t" />
 			<Parameter name="Battery1_Voltage" parameterTypeRef="float_t" />
-			<Parameter name="Enum_Para_1" parameterTypeRef="uint32_t" />
+			<Parameter name="Enum_Para_1" parameterTypeRef="uint8_t" />
 			<Parameter name="Thruster_Status" parameterTypeRef="Thruster_Status_Type" />
 			<!-- <Parameter name="A" parameterTypeRef="float_t" />
 			<Parameter name="Height" parameterTypeRef="float_t" />
@@ -190,68 +193,26 @@
 				<EntryList>
 					<!-- <ParameterRefEntry parameterRef="EpochUSNO" />
 					<ParameterRefEntry parameterRef="OrbitNumberCumulative" /> -->
-					<ParameterRefEntry parameterRef="ElapsedSeconds" />
+					<ParameterRefEntry parameterRef="ElapsedSeconds" >
 						<LocationInContainerInBits referenceLocation="containerStart">
 							<FixedValue>48</FixedValue>
 						</LocationInContainerInBits>
-					<ParameterRefEntry parameterRef="Battery1_Voltage" />
+					</ParameterRefEntry>
+					<ParameterRefEntry parameterRef="Battery1_Voltage" >
 						<LocationInContainerInBits referenceLocation="containerStart">
 							<FixedValue>80</FixedValue>
 						</LocationInContainerInBits>
-					<ParameterRefEntry parameterRef="Enum_Para_1" />
+					</ParameterRefEntry>	
+					<ParameterRefEntry parameterRef="Enum_Para_1" >
 						<LocationInContainerInBits referenceLocation="containerStart">
 							<FixedValue>112</FixedValue>
 						</LocationInContainerInBits>
-					<ParameterRefEntry parameterRef="Thruster_Status" />
+					</ParameterRefEntry>
+					<ParameterRefEntry parameterRef="Thruster_Status" >
 						<LocationInContainerInBits referenceLocation="containerStart">
-							<FixedValue>144</FixedValue>
-						</LocationInContainerInBits>
-					<!-- <ParameterRefEntry parameterRef="A" />
-					<ParameterRefEntry parameterRef="Height" />
-					<ParameterRefEntry parameterRef="Position" />
-					<ParameterRefEntry parameterRef="Velocity" />
-					<ParameterRefEntry parameterRef="Latitude" />
-					<ParameterRefEntry parameterRef="Longitude" />
-					<ParameterRefEntry parameterRef="Battery1_Voltage" />
-					<ParameterRefEntry parameterRef="Battery2_Voltage" />
-					<ParameterRefEntry parameterRef="Battery1_Temp" />
-					<ParameterRefEntry parameterRef="Battery2_Temp" />
-					<ParameterRefEntry parameterRef="Magnetometer" />
-					<ParameterRefEntry parameterRef="Sunsensor" />
-					<ParameterRefEntry parameterRef="Gyro" />
-					<ParameterRefEntry parameterRef="Detector_Temp" />
-					<ParameterRefEntry parameterRef="Shadow" />
-					<ParameterRefEntry parameterRef="Contact_Golbasi_GS" />
-					<ParameterRefEntry parameterRef="Contact_Svalbard" />
-					<ParameterRefEntry parameterRef="Payload_Status" />
-					<ParameterRefEntry parameterRef="Payload_Error_Flag" />
-					<ParameterRefEntry parameterRef="ADCS_Error_Flag" />
-					<ParameterRefEntry parameterRef="CDHS_Error_Flag" />
-					<ParameterRefEntry parameterRef="COMMS_Error_Flag" />
-					<ParameterRefEntry parameterRef="EPS_Error_Flag" />
-					<ParameterRefEntry parameterRef="COMMS_Status" />
-					<ParameterRefEntry parameterRef="CDHS_Status" />
-					<ParameterRefEntry parameterRef="Mode_Night" />
-					<ParameterRefEntry parameterRef="Mode_Day" />
-					<ParameterRefEntry parameterRef="Mode_Payload" />
-					<ParameterRefEntry parameterRef="Mode_XBand" />
-					<ParameterRefEntry parameterRef="Mode_SBand" />
-					<ParameterRefEntry parameterRef="Mode_Safe" />
-					<ParameterRefEntry parameterRef="Enum_Para_1">
-						<LocationInContainerInBits referenceLocation="containerStart">
-							<FixedValue>29</FixedValue>
+							<FixedValue>120</FixedValue>
 						</LocationInContainerInBits>
 					</ParameterRefEntry>
-					<ParameterRefEntry parameterRef="Enum_Para_2">
-						<LocationInContainerInBits referenceLocation="containerStart">
-							<FixedValue>27</FixedValue>
-						</LocationInContainerInBits>
-					</ParameterRefEntry>
-					<ParameterRefEntry parameterRef="Enum_Para_3">
-						<LocationInContainerInBits referenceLocation="containerStart">
-							<FixedValue>25</FixedValue>
-						</LocationInContainerInBits>
-					</ParameterRefEntry> -->
 				</EntryList>
 				<BaseContainer containerRef="TelemetryPacket">
 					<RestrictionCriteria>
