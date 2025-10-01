@@ -1,165 +1,228 @@
-import time
-import os
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+PS6_HOP_DHS_001 (Non-interactive) — Simulasi Prosedur OOP
+- Semua keputusan yes/no diberikan via argumen CLI.
+- Dirancang agar gampang dijalankan dari Yamcs Web UI → Procedures → Run a script.
 
-# Global Variables
-oop_file = []
-gnss_file = []
-oop_update_s_u = None
-enable_fdiroot_s_u = None
+Exit codes:
+  0  : Selesai nominal (END)
+  10 : Stop di Contingency Meeting (dari blok 1.x)
+  20 : Stop di Contingency Meeting (dari blok 2.x)
+  30 : Stop di Contingency Meeting (dari blok 3.x)
+  1  : Argumen kurang/invalid
+"""
 
-def prompt(message):
-    print(message)
+import argparse
+import sys
+from textwrap import dedent
 
-def tlm(parameter):
-    """Simulasi pengambilan data telemetry (TLMS) berdasarkan parameter."""
-    # Ini harus diubah dengan kode yang sesuai untuk mendapatkan telemetry data
-    return 0  # Misalnya mengembalikan status OK (0)
+# ---------- Utilities for pretty logging ----------
+def step(id_, title):
+    print(f"\n[{id_}] {title}")
 
-def cmd(command):
-    """Simulasi pengiriman perintah ke sistem."""
-    print(f"Perintah yang dikirim: {command}")
+def info(msg):
+    print(f"  - {msg}")
 
-def wait(seconds):
-    """Menunggu selama beberapa detik."""
-    time.sleep(seconds)
+def stop_with(code, where):
+    info(f"Prosedur dihentikan (Contingency Meeting @ {where})")
+    sys.exit(code)
 
-def step1_initialise_procedure():
-    """Pilih aksi untuk pembaruan OOP dan aktifkan FDIR."""
-    global oop_update_s_u, enable_fdiroot_s_u
-    oop_update_s_u = input("Pilih Aksi untuk Pembaruan OOP (ENABLE_UPDATE_BY_GNSS, DISABLE_UPDATE_BY_GNSS, UPDATE_BY_GROUND): ")
-    enable_fdiroot_s_u = input("Aktifkan FDIR OOP (ENABLE, DISABLE): ")
+def require_arg(args, name, hint):
+    val = getattr(args, name, None)
+    if val is None:
+        print(f"[ARG ERROR] Argumen --{name.replace('_','-')} wajib diisi untuk jalur ini.")
+        print(f"  Hint: {hint}")
+        sys.exit(1)
+    return val
 
-# Menghapus step2_set_variables karena berkaitan dengan file XML
+# ---------- Main ----------
+def main():
+    p = argparse.ArgumentParser(
+        description="PS6_HOP_DHS_001 (Non-interactive) — OOP Flow Replica",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=dedent("""\
+        CONTOH PEMAKAIAN (isi sesuai kebutuhan jalur):
+          # Primary GSP1, health OK, EEPROM nominal → sukses
+          --primary GSP1 --monitor-minutes 5 --p1-health-ok yes \
+          --p1-open-002b no --p1-eeprom-executed yes --p1-eeprom-nominal yes
 
-def step3_check_cel():
-    """Memeriksa status CEL dari simulator di Yamcs."""
-    cel_status = tlm("INST HEALTH_STATUS COLLECTS")
-    if cel_status != 0:
-        return True
+          # Primary GSP2, health OK, EEPROM tidak nominal → contingency
+          --primary GSP2 --p2-health-ok yes \
+          --p2-open-002b yes --p2-eeprom-executed yes --p2-eeprom-nominal no
+
+          # Primary GSP1, health NOT OK → contingency (blok 1.x)
+          --primary GSP1 --p1-health-ok no
+        """)
+    )
+
+    # Global
+    p.add_argument("--primary", choices=["GSP1", "GSP2"], required=True,
+                   help="Processor primary menurut TM (GSP1/GSP2)")
+    p.add_argument("--monitor-minutes", type=int, default=5,
+                   help="Durasi monitoring kesehatan (menit). Default: 5")
+
+    # Cabang Processor 1 (1.x & 2.x)
+    p.add_argument("--p1-health-ok", choices=["yes", "no"],
+                   help="Hasil health check untuk Processor 1 (yes/no)")
+    p.add_argument("--p1-open-002b", choices=["yes", "no"],
+                   help="Pada blok 2.1: buka PS6_HOP_DHS_002b? (yes/no)")
+    p.add_argument("--p1-eeprom-executed", choices=["yes", "no"],
+                   help="Pada blok 2.2: EEPROM Readout < 1 tahun terakhir? (yes/no)")
+    p.add_argument("--p1-open-003", choices=["yes", "no"],
+                   help="Pada blok 2.3: buka PS6_HOP_DHS_003? (yes/no)")
+    p.add_argument("--p1-eeprom-nominal", choices=["yes", "no"],
+                   help="Pada blok 2.4: EEPROM image nominal? (yes/no)")
+
+    # Cabang Processor 2 (1.x & 3.x)
+    p.add_argument("--p2-health-ok", choices=["yes", "no"],
+                   help="Hasil health check untuk Processor 2 (yes/no)")
+    p.add_argument("--p2-open-002b", choices=["yes", "no"],
+                   help="Pada blok 3.1: buka PS6_HOP_DHS_002b? (yes/no)")
+    p.add_argument("--p2-eeprom-executed", choices=["yes", "no"],
+                   help="Pada blok 3.2: EEPROM Readout < 1 tahun terakhir? (yes/no)")
+    p.add_argument("--p2-open-003", choices=["yes", "no"],
+                   help="Pada blok 3.3: buka PS6_HOP_DHS_003? (yes/no)")
+    p.add_argument("--p2-eeprom-nominal", choices=["yes", "no"],
+                   help="Pada blok 3.4: EEPROM image nominal? (yes/no)")
+
+    args = p.parse_args()
+
+    # ------------------------------------------------------------
+    # INIT / START
+    # ------------------------------------------------------------
+    step("INIT", "Initialization")
+    info("apType = SHIP; init global context g = {}")
+
+    step("START", "Begin PS6_HOP_DHS_001")
+    info("Main step flow control START")
+
+    # ------------------------------------------------------------
+    # 1.1 Which processor is Primary?
+    # ------------------------------------------------------------
+    step("1.1", "Which processor is Primary?")
+    info(f"TM says Primary Processor ID = {args.primary}")
+    if args.primary == "GSP1":
+        # ---- 1.2 / 1.3 / 1.4 (Processor 1 path) ----
+        step("1.2", "Monitor the Processor 1 health statuses for 5 minutes")
+        info("Instruksi: Monitor Processor 1")
+        step("1.3", f"Wait {args.monitor_minutes} minutes")
+        info(f"Menunggu {args.monitor_minutes} menit (simulasi tanpa delay)")
+
+        step("1.4", "Are health checks OK?")
+        p1_health = require_arg(
+            args, "p1_health_ok",
+            "--p1-health-ok {yes|no}"
+        )
+        info(f"Input: p1-health-ok = {p1_health}")
+        if p1_health == "no":
+            # 1.8 contingency
+            step("1.8", "Convene Contingency Meeting")
+            stop_with(10, "1.x")
+        # else → lanjut ke blok 2 (Processor 1 Checkout)
+        goto_block = 2
+
     else:
-        prompt("Status CEL tidak sesuai!")
-        return False
+        # ---- 1.5 / 1.6 / 1.7 (Processor 2 path) ----
+        step("1.5", "Monitor the Processor 2 health statuses for 5 minutes")
+        info("Instruksi: Monitor Processor 2")
+        step("1.6", f"Wait {args.monitor_minutes} minutes")
+        info(f"Menunggu {args.monitor_minutes} menit (simulasi tanpa delay)")
 
-def step4_check_gnss_configuration():
-    """Memeriksa file konfigurasi GNSS."""
-    prompt("Konfigurasi GNSS: Tidak ada file XML yang diproses.")
-    return True
+        step("1.7", "Are health checks OK?")
+        p2_health = require_arg(
+            args, "p2_health_ok",
+            "--p2-health-ok {yes|no}"
+        )
+        info(f"Input: p2-health-ok = {p2_health}")
+        if p2_health == "no":
+            # 1.8 contingency
+            step("1.8", "Convene Contingency Meeting")
+            stop_with(10, "1.x")
+        # else → lanjut ke blok 3 (Processor 2 Checkout)
+        goto_block = 3
 
-def step5_check_gnss_status():
-    """Memeriksa status GNSS dari simulator di Yamcs."""
-    gnss_1_status = tlm("NST HEALTH_STATUS COLLECTS")
-    gnss_2_status = tlm("NST HEALTH_STATUS COLLECTS")
-    if gnss_1_status != 0 and gnss_2_status != 0:
-        return True
+    # ------------------------------------------------------------
+    # 2.x Processor 1 Checkout
+    # ------------------------------------------------------------
+    if goto_block == 2:
+        step("2", "Processor 1 Checkout")
+        info("Main step flow control 2")
+
+        # 2.1 PS6_HOP_DHS_002b ?
+        step("2.1", "Go to HOP_DHS_002b, Decoder Redundancy Checkout")
+        ans = require_arg(args, "p1_open_002b", "--p1-open-002b {yes|no}")
+        info(f"Operator pilih open 002b? {ans}")
+        if ans == "yes":
+            info("StartProc('PS6_HOP_DHS_002b', args=[['globalSettings', g]])  (simulasi)")
+
+        # 2.2 EEPROM executed < 1 year?
+        step("2.2", "Determine if EEPROM Readout has been executed in the last year.")
+        eexec = require_arg(args, "p1_eeprom_executed", "--p1-eeprom-executed {yes|no}")
+        info(f"EEPROM Readout executed in last year? {eexec}")
+
+        if eexec == "no":
+            # 2.3 open HOP_DHS_003?
+            step("2.3", "Go to HOP_DHS_003, EEPROM Readout and Comparison to Ground Image")
+            open003 = require_arg(args, "p1_open_003", "--p1-open-003 {yes|no}")
+            info(f"Operator pilih open 003? {open003}")
+            if open003 == "yes":
+                info("StartProc('PS6_HOP_DHS_003', args=[['globalSettings', g]])  (simulasi)")
+
+        # 2.4 EEPROM nominal?
+        step("2.4", "Is the EEPROM image nominal?")
+        nominal = require_arg(args, "p1_eeprom_nominal", "--p1-eeprom-nominal {yes|no}")
+        info(f"EEPROM nominal? {nominal}")
+        if nominal == "no":
+            # 2.5 contingency
+            step("2.5", "Convene Contingency meeting")
+            stop_with(20, "2.x")
+        else:
+            step("999", "END")
+            info("cleanup('PS6_HOP_DHS_001')")
+            step("END", "End PS6_HOP_DHS_001")
+            sys.exit(0)
+
+    # ------------------------------------------------------------
+    # 3.x Processor 2 Checkout
+    # ------------------------------------------------------------
     else:
-        prompt("Status GNSS tidak valid!")
-        return False
+        step("3", "Processor 2 Checkout")
+        info("Main step flow control 3")
 
-def step6_check_oop_status():
-    """Mengirimkan perintah untuk menghapus status OOP dan memeriksa status."""
-    cmd("INST CLEAR")  # Kirim perintah untuk menghapus status
-    oop_status = tlm("NST HEALTH_STATUS COLLECTS")
-    if oop_status == 0:
-        prompt("Status OOP valid.")
-        return True
-    else:
-        prompt("Status OOP tidak valid!")
-        return False
+        # 3.1 PS6_HOP_DHS_002b ?
+        step("3.1", "Go to HOP_DHS_002b, Decoder Redundancy Checkout")
+        ans = require_arg(args, "p2_open_002b", "--p2-open-002b {yes|no}")
+        info(f"Operator pilih open 002b? {ans}")
+        if ans == "yes":
+            info("StartProc('PS6_HOP_DHS_002b', args=[['globalSettings', g]])  (simulasi)")
 
-def step7_check_obcp_is_not_running():
-    """Memeriksa status proses OBC."""
-    obc_proc_status = tlm("NST HEALTH_STATUS COLLECTS")
-    if obc_proc_status == 0:
-        prompt("Proses OBC tidak berjalan.")
-        return True
-    else:
-        prompt("Proses OBC masih berjalan!")
-        return False
+        # 3.2 EEPROM executed < 1 year?
+        step("3.2", "Determine if EEPROM Readout has been executed in the last year.")
+        eexec = require_arg(args, "p2_eeprom_executed", "--p2-eeprom-executed {yes|no}")
+        info(f"EEPROM Readout executed in last year? {eexec}")
 
-def step8_check_reference_date_consistency():
-    """Memeriksa konsistensi tanggal referensi."""
-    prompt("Tanggal Referensi: Tidak ada data dari file XML.")
-    return True
+        if eexec == "no":
+            # 3.3 open HOP_DHS_003?
+            step("3.3", "Go to HOP_DHS_003, EEPROM Readout and Comparison to Ground Image")
+            open003 = require_arg(args, "p2_open_003", "--p2-open-003 {yes|no}")
+            info(f"Operator pilih open 003? {open003}")
+            if open003 == "yes":
+                info("StartProc('PS6_HOP_DHS_003', args=[['globalSettings', g]])  (simulasi)")
 
-def step9_configure_observability():
-    """Mengonfigurasi observabilitas berdasarkan bandwidth."""
-    observability_status = tlm("NST HEALTH_STATUS COLLECTS")
-    cmd("INST CLEAR")  # Mengaktifkan observabilitas
-    return True
+        # 3.4 EEPROM nominal?
+        step("3.4", "Is the EEPROM image nominal?")
+        nominal = require_arg(args, "p2_eeprom_nominal", "--p2-eeprom-nominal {yes|no}")
+        info(f"EEPROM nominal? {nominal}")
+        if nominal == "no":
+            # 3.5 contingency
+            step("3.5", "Convene Contingency meeting")
+            stop_with(30, "3.x")
+        else:
+            step("999", "END")
+            info("cleanup('PS6_HOP_DHS_001')")
+            step("END", "End PS6_HOP_DHS_001")
+            sys.exit(0)
 
-def step10_check_gnss_and_oop_fdir_configuration():
-    """Memeriksa konfigurasi FDIR untuk OOP dan GNSS."""
-    fdir_status = tlm("NST HEALTH_STATUS COLLECTS")
-    if fdir_status == 0:
-        prompt("FDIR konfigurasi valid!")
-        return True
-    else:
-        prompt("FDIR konfigurasi tidak valid!")
-        return False
-
-def step11_check_obt_ut():
-    """Memeriksa waktu OBT (On-Board Time)."""
-    obt_time = tlm("NST PARAMS PACKET_TIMEFORMATTED")
-    prompt("Waktu OBT: " + str(obt_time))
-    return True
-
-def step12_disable_oop_update_by_gnss():
-    """Menonaktifkan pembaruan OOP berdasarkan GNSS."""
-    cmd("INST CLEAR")  # Kirim perintah untuk menonaktifkan pembaruan OOP
-    gnss_status = tlm("NST HEALTH_STATUS COLLECTS")
-    prompt("Status GNSS setelah menonaktifkan: " + str(gnss_status))
-    wait(5)
-    return True
-
-def step13_verify_gnss_validity_flag():
-    """Memverifikasi bendera validitas GNSS."""
-    gnss_validity_flag = tlm("NST HEALTH_STATUS COLLECTS")
-    if gnss_validity_flag == 1:
-        prompt("GNSS validitas terverifikasi.")
-        return True
-    else:
-        prompt("GNSS validitas gagal!")
-        return False
-
-def step14_configure_gnss_fdir():
-    """Mengonfigurasi FDIR untuk GNSS."""
-    gnss_fdir_status = tlm("NST HEALTH_STATUS COLLECTS")
-    if gnss_fdir_status == 0:
-        prompt("GNSS FDIR konfigurasi berhasil!")
-        return True
-    else:
-        prompt("GNSS FDIR konfigurasi gagal!")
-        return False
-
-def step15_deactivate_oop_fdir():
-    """Menonaktifkan FDIR untuk OOP."""
-    cmd("INST CLEAR")  # Mengirim perintah untuk menonaktifkan FDIR OOP
-    return True
-
-def step16_authorize_oop_parameters_loading():
-    """Mengotorisasi pemuatan parameter OOP."""
-    oop_phase = tlm("NST HEALTH_STATUS COLLECTS")
-    prompt("OOP Phase: " + str(oop_phase))
-    return True
-
-def step32_end_of_procedure():
-    """Prosedur selesai."""
-    print("Prosedur selesai")
-
-# Main Procedure
-step1_initialise_procedure()
-step3_check_cel()
-step4_check_gnss_configuration()
-step5_check_gnss_status()
-step6_check_oop_status()
-step7_check_obcp_is_not_running()
-step8_check_reference_date_consistency()
-step9_configure_observability()
-step10_check_gnss_and_oop_fdir_configuration()
-step11_check_obt_ut()
-step12_disable_oop_update_by_gnss()
-step13_verify_gnss_validity_flag()
-step14_configure_gnss_fdir()
-step15_deactivate_oop_fdir()
-step16_authorize_oop_parameters_loading()
-step32_end_of_procedure()
+if __name__ == "__main__":
+    main()
