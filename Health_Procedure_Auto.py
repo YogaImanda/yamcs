@@ -1,54 +1,48 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PS6_HOP_DHS_001 — Full-auto + chaining (Activities API)
-- PRIMARY  : /myproject/Status_GSP            -> GSP_1 / GSP_2
-- HEALTH   : /myproject/Mode_FDIR             -> OPERATIONAL/PRE_OPERATIONAL = sehat
-- EEPROM   : /myproject/Status_EEPROM (enum)  -> NOMINAL/NOT_NOMINAL
-             fallback: /myproject/Status_EEPROM_Nominal (bool) -> true/false
-- READOUT  : /myproject/EEPROM_Last_Readout_UTC (epoch ms)
-             fallback: /myproject/EEPROM_Readout_Within_1y (bool)
-- GUARD    : /myproject/Auto_Run_Procedures (bool) -> boleh trigger 002b/003
-- EVENT LOG: INFO/ERROR ke Yamcs
-- CHAINING : trigger SCRIPT lain via **Activities API**:
-             PS6_HOP_DHS_002b_rt.py, PS6_HOP_DHS_003_rt.py
+PS6_HOP_DHS_001 — Full-auto + chaining (attach mode)
+- Membaca TM: Status_GSP, Mode_FDIR, Status_EEPROM, Auto_Run_Procedures,
+  EEPROM_Last_Readout_UTC / EEPROM_Readout_Within_1y
+- Menjalankan 002b dan/atau 003.
+  * Jika REST Activities API tersedia → pakai REST.
+  * Jika tidak (404) → spawn lokal dengan ATTACH (stdout/stderr anak
+    di-stream ke log 001) dan kirim Event start/finish.
 - Argumen opsional:
     nominal (default)  -> jalur normal
     contingency        -> paksa health gagal (uji)
 """
 
-import sys, json, time
-import os
-import subprocess
-import shlex
+import sys, os, json, time, shlex, subprocess, datetime
 import urllib.request, urllib.error
 
-# ================= KONFIGURASI =================
+# ===================== KONFIG =====================
 YAMCS_HOST   = "127.0.0.1"
 YAMCS_PORT   = 8090
-INSTANCE     = "simdhs"
+INSTANCE     = "myproject"
 PROCESSOR    = "realtime"
 
-# Nama parameter TM
-PARAM_PRIMARY      = "/simdhs/Status_GSP"
-PARAM_FDIR         = "/simdhs/Mode_FDIR"
-PARAM_EE_ENUM      = "/simdhs/Status_EEPROM"
-PARAM_EE_BOOL      = "/simdhs/Status_EEPROM_Nominal"
-PARAM_READOUT_TS   = "/simdhs/EEPROM_Last_Readout_UTC"
-PARAM_READOUT_BOOL = "/simdhst/EEPROM_Readout_Within_1y"
-PARAM_AUTORUN      = "/simdhs/Auto_Run_Procedures"
+PARAM_PRIMARY      = "/myproject/Status_GSP"
+PARAM_FDIR         = "/myproject/Mode_FDIR"
+PARAM_EE_ENUM      = "/myproject/Status_EEPROM"
+PARAM_EE_BOOL      = "/myproject/Status_EEPROM_Nominal"
+PARAM_READOUT_TS   = "/myproject/EEPROM_Last_Readout_UTC"
+PARAM_READOUT_BOOL = "/myproject/EEPROM_Readout_Within_1y"
+PARAM_AUTORUN      = "/myproject/Auto_Run_Procedures"
 
-# Prosedur yang akan di-trigger saat chaining
 PROC_002B = "PS6_HOP_DHS_002b_rt"
 PROC_003  = "PS6_HOP_DHS_003_rt"
 
-# Opsi eksekusi
 REAL_WAIT_5_MIN = False
-AUTH_TOKEN      = None  # isi kalau REST pakai auth (Bearer)
+AUTH_TOKEN      = None          # isi jika REST butuh auth (Bearer)
 EVENT_SOURCE    = "ps6_hop_dhs_001_rt.py"
 ONE_YEAR_MS     = 365 * 24 * 3600 * 1000
 
-# ================= REST HELPERS =================
+# Lokasi scripts untuk fallback spawn
+SCRIPTS_DIR = os.environ.get("YAMCS_ETC_SCRIPTS",
+                              "/home/vboxuser/mcs-main/yamcs/etc/scripts")
+
+# ===================== REST HELPERS =====================
 def http_get_json(url, timeout=4.0, token=None):
     req = urllib.request.Request(url)
     if token:
@@ -60,6 +54,7 @@ def http_post_json(url, payload, timeout=8.0, token=None):
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -77,24 +72,22 @@ def get_value(resp):
             or ev.get("floatValue")
             or ev.get("booleanValue"))
 
-# ================= EVENTS =================
+# ===================== EVENTS =====================
 def post_event(severity, message, extra=None):
     ts_ms = int(time.time()*1000)
     payload = {"message": message, "severity": severity.upper(),
                "source": EVENT_SOURCE, "time": ts_ms, "type": severity.upper()}
     if extra: payload["extra"] = extra
-    endpoints = (f"/api/events/{INSTANCE}", f"/api/archive/{INSTANCE}/events")
-    for path in endpoints:
+    for path in (f"/api/events/{INSTANCE}", f"/api/archive/{INSTANCE}/events"):
         url = f"http://{YAMCS_HOST}:{YAMCS_PORT}{path}"
         try:
             http_post_json(url, payload, token=AUTH_TOKEN)
             return True
         except Exception:
             continue
-    print("⚠️  gagal kirim event")
-    return False
+    print("⚠️  gagal kirim event"); return False
 
-# ================= LOGGING =================
+# ===================== LOGGING =====================
 def step(id_, title): print(f"\n[{id_}] {title}")
 def info(msg): print(f"  - {msg}")
 def stop(msg, code=1, send_event=True):
@@ -102,78 +95,7 @@ def stop(msg, code=1, send_event=True):
     if send_event: post_event("ERROR", msg)
     sys.exit(code)
 
-# ================= CHAINING (Activities API) =================
-
-def start_procedure(name, args_list=None):
-    """
-    Trigger a SCRIPT. Tries multiple REST endpoints; if all 404, falls back to local spawn.
-    name: 'PS6_HOP_DHS_002b_rt' or 'PS6_HOP_DHS_002b_rt.py'
-    """
-    script_name = name if name.endswith(".py") else f"{name}.py"
-    args_list = args_list or []
-
-    payload1 = {
-        "type": "SCRIPT",
-        "name": script_name,
-        "args": args_list
-    }
-    payload2 = {
-        "instance": INSTANCE,
-        "type": "SCRIPT",
-        "name": script_name,
-        "args": args_list
-    }
-
-    # 3 REST variants we’ll try in order
-    endpoints = [
-        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities/{INSTANCE}", payload1),
-        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/instances/{INSTANCE}/activities", payload1),
-        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities", payload2),
-    ]
-
-    last_err = None
-    for url, payload in endpoints:
-        try:
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(url, data=data, method="POST")
-            req.add_header("Content-Type", "application/json")
-            req.add_header("Accept", "application/json")
-            if AUTH_TOKEN:
-                req.add_header("Authorization", f"Bearer {AUTH_TOKEN}")
-            with urllib.request.urlopen(req, timeout=8.0) as resp:
-                post_event("INFO", f"Triggered script activity via REST: {script_name} @ {url}")
-                info(f"StartProc('{script_name}') OK (REST) → {url}")
-                return True
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="ignore")
-            last_err = f"HTTP {e.code} at {url} body={body[:200]}"
-        except Exception as e:
-            last_err = f"{type(e).__name__} at {url}: {e}"
-
-    # ===== Fallback: local spawn =====
-    # This will not show as a separate Activity in Yamcs, but chaining works.
-    try:
-        # Resolve script path relative to Yamcs etc/scripts
-        base_dir = os.environ.get("YAMCS_ETC_SCRIPTS", "/home/yamcs/etc/scripts")
-        script_path = os.path.join(base_dir, script_name)
-
-        # If running under the same Python, use sys.executable
-        python_bin = sys.executable or "python3"
-        cmd = [python_bin, script_path] + args_list
-
-        info(f"REST unavailable → fallback spawn: {' '.join(shlex.quote(c) for c in cmd)}")
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        post_event("WARNING", f"REST 404 → spawned locally: {script_name}")
-        return True
-    except Exception as e:
-        msg = f"Failed to trigger {script_name} (REST + spawn): {e}; last REST err: {last_err}"
-        info(msg)
-        post_event("ERROR", msg)
-        return False
-
-
-
-# ================= UTIL =================
+# ===================== UTIL =====================
 def bool_from_tm(qname, default=None):
     try:
         v = get_value(yamcs_get_parameter(qname))
@@ -193,10 +115,98 @@ def epoch_ms_from_tm(qname):
         pass
     return None
 
-# ================= MAIN =================
+# ===================== CHAINING (REST→ATTACH) =====================
+def start_procedure(name, args_list=None, attach=True):
+    """
+    Jalankan SCRIPT:
+      1) Coba REST Activities API (beberapa varian endpoint)
+      2) Jika 404/err → fallback spawn lokal
+      3) attach=True → stream stdout/stderr anak ke log 001 (menunggu selesai)
+         attach=False → background + tulis ke file logs/
+    """
+    script_name = name if name.endswith(".py") else f"{name}.py"
+    args_list = args_list or []
+
+    # --- 1) coba REST ---
+    payload1 = {"type": "SCRIPT", "name": script_name, "args": args_list}
+    payload2 = {"instance": INSTANCE, "type": "SCRIPT", "name": script_name, "args": args_list}
+    rest_endpoints = [
+        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities/{INSTANCE}", payload1),
+        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/instances/{INSTANCE}/activities", payload1),
+        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities", payload2),
+    ]
+    last_err = None
+    for url, payload in rest_endpoints:
+        try:
+            http_post_json(url, payload, token=AUTH_TOKEN)
+            post_event("INFO", f"Triggered script activity via REST: {script_name} @ {url}")
+            info(f"StartProc('{script_name}') OK (REST) → {url}")
+            return True
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore")
+            last_err = f"HTTP {e.code} {url} body={body[:180]}"
+        except Exception as e:
+            last_err = f"{type(e).__name__} {url}: {e}"
+
+    # --- 2) fallback spawn ---
+    script_path = os.path.join(SCRIPTS_DIR, script_name)
+    if not os.path.exists(script_path):
+        msg = f"Script not found: {script_path} ; last REST err: {last_err}"
+        info(msg); post_event("ERROR", msg); return False
+
+    # interpreter dari shebang (kalau ada)
+    python_bin = None
+    try:
+        with open(script_path, "r", encoding="utf-8", errors="ignore") as f:
+            first = f.readline().strip()
+            if first.startswith("#!"):
+                python_bin = first[2:].strip()
+    except Exception:
+        pass
+    if not python_bin:
+        python_bin = sys.executable or "python3"
+
+    cmd = [python_bin, script_path] + args_list
+    info("REST unavailable → spawn: " + " ".join(shlex.quote(c) for c in cmd))
+
+    if attach:
+        try:
+            proc = subprocess.Popen(
+                cmd, cwd=SCRIPTS_DIR,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1
+            )
+            post_event("INFO", f"{script_name} started [attach]")
+            print(f"  ├─ [attach] {script_name} started")
+            for line in proc.stdout:
+                print(f"  │   {line.rstrip()}")
+            rc = proc.wait()
+            print(f"  └─ [attach] {script_name} exit={rc}")
+            sev = "INFO" if rc == 0 else "ERROR"
+            post_event(sev, f"{script_name} finished (exit {rc}) [attach]")
+            return rc == 0
+        except Exception as e:
+            msg = f"Failed to spawn-attach {script_name}: {e}; last REST err: {last_err}"
+            info(msg); post_event("ERROR", msg); return False
+    else:
+        try:
+            logs_dir = os.path.join(SCRIPTS_DIR, "logs"); os.makedirs(logs_dir, exist_ok=True)
+            ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            log_file = os.path.join(logs_dir, f"{os.path.splitext(script_name)[0]}_{ts}.log")
+            with open(log_file, "ab", buffering=0) as f:
+                f.write(f"=== Spawn {script_name} @ {ts} ===\n".encode())
+                subprocess.Popen(cmd, stdout=f, stderr=f, cwd=SCRIPTS_DIR)
+            post_event("WARNING", f"Spawned locally: {script_name} (log: {log_file})")
+            return True
+        except Exception as e:
+            msg = f"Failed to spawn {script_name}: {e}; last REST err: {last_err}"
+            info(msg); post_event("ERROR", msg); return False
+
+# ===================== MAIN =====================
 def main():
     mode = sys.argv[1].lower() if len(sys.argv)>1 else "nominal"
-    print("=== PS6_HOP_DHS_001 Full-auto + chaining (Activities API) ===")
+    print("=== PS6_HOP_DHS_001 Full-auto + chaining (attach mode) ===")
+    print(f"Using instance: {INSTANCE}  processor: {PROCESSOR}")
     print(f"Mode eksekusi: {mode.upper()}")
 
     # 1) PRIMARY
@@ -209,9 +219,9 @@ def main():
         stop("Nilai Status_GSP invalid (harus GSP_1/GSP_2)", code=92)
 
     if primary == "GSP_1":
-        step("1.2","Monitor P1 health 5 min")
+        step("1.2", "Monitor P1 health 5 min")
     else:
-        step("1.5","Monitor P2 health 5 min")
+        step("1.5", "Monitor P2 health 5 min")
     if REAL_WAIT_5_MIN:
         time.sleep(300)
     else:
@@ -237,14 +247,14 @@ def main():
     auto_run = bool_from_tm(PARAM_AUTORUN, default=True)
     info(f"Auto_Run_Procedures = {auto_run}")
 
-    # 4) Panggil 002b (2.1/3.1)
+    # 4) 002b
     step("2/3.1", "Decoder Redundancy Checkout (002b)")
     if auto_run:
-        start_procedure(PROC_002B)
+        start_procedure(PROC_002B, attach=True)
     else:
         info("Auto-run dimatikan → 002b tidak dipanggil")
 
-    # 5) Cek EEPROM readout < 1 tahun (2.2/3.2)
+    # 5) READOUT < 1y
     step("2/3.2", "Cek EEPROM Readout < 1 tahun")
     within_1y = bool_from_tm(PARAM_READOUT_BOOL, default=None)
     if within_1y is None:
@@ -259,21 +269,21 @@ def main():
     else:
         info(f"Readout_Within_1y (bool) = {within_1y}")
 
-    # 6) Bila >1y, panggil 003 (2.3/3.3)
+    # 6) 003 jika perlu
     if not within_1y:
         step("2/3.3", "EEPROM Readout & Compare (003)")
         if auto_run:
-            start_procedure(PROC_003)
+            start_procedure(PROC_003, attach=True)
         else:
             info("Auto-run dimatikan → 003 tidak dipanggil")
 
-    # 7) EEPROM nominal? (2.4/3.4)
+    # 7) EEPROM nominal?
     step("2/3.4", "Cek EEPROM nominal")
     eeprom_nominal = None
     try:
         ee = get_value(yamcs_get_parameter(PARAM_EE_ENUM))
         if isinstance(ee, str) and ee.strip().upper() in ("NOMINAL","NOT_NOMINAL"):
-            eeprom_nominal = (ee.strip().upper()=="NOMINAL")
+            eeprom_nominal = (ee.strip().upper() == "NOMINAL")
             info(f"Status_EEPROM (enum) = {ee}")
     except Exception as e:
         info(f"Skip {PARAM_EE_ENUM}: {e}")
@@ -293,13 +303,11 @@ def main():
         stop("EEPROM tidak nominal → prosedur dihentikan.", code=20, send_event=False)
 
     # 8) END
-    step("999","END")
+    step("999", "END")
     info("cleanup('PS6_HOP_DHS_001')")
     post_event("INFO", f"END nominal (Primary={primary}, FDIR={fdir})")
-    step("END","Prosedur selesai nominal ✅")
+    step("END", "Prosedur selesai nominal ✅")
     sys.exit(0)
 
 if __name__ == "__main__":
     main()
-
-
