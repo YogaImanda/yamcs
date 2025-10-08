@@ -18,6 +18,9 @@ PS6_HOP_DHS_001 — Full-auto + chaining (Activities API)
 """
 
 import sys, json, time
+import os
+import subprocess
+import shlex
 import urllib.request, urllib.error
 
 # ================= KONFIGURASI =================
@@ -100,51 +103,74 @@ def stop(msg, code=1, send_event=True):
     sys.exit(code)
 
 # ================= CHAINING (Activities API) =================
+
 def start_procedure(name, args_list=None):
     """
-    Jalankan SCRIPT via Activities API. Coba 2 endpoint agar kompatibel lintas versi YAMCS.
-    name: "PS6_HOP_DHS_002b_rt" atau "PS6_HOP_DHS_002b_rt.py"
+    Trigger a SCRIPT. Tries multiple REST endpoints; if all 404, falls back to local spawn.
+    name: 'PS6_HOP_DHS_002b_rt' or 'PS6_HOP_DHS_002b_rt.py'
     """
     script_name = name if name.endswith(".py") else f"{name}.py"
-    payload = {
+    args_list = args_list or []
+
+    payload1 = {
         "type": "SCRIPT",
         "name": script_name,
-        "args": args_list or []
+        "args": args_list
+    }
+    payload2 = {
+        "instance": INSTANCE,
+        "type": "SCRIPT",
+        "name": script_name,
+        "args": args_list
     }
 
-    # Siapkan 2 endpoint alternatif
+    # 3 REST variants we’ll try in order
     endpoints = [
-        f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities/{INSTANCE}",
-        f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/instances/{INSTANCE}/activities",
+        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities/{INSTANCE}", payload1),
+        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/instances/{INSTANCE}/activities", payload1),
+        (f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities", payload2),
     ]
 
     last_err = None
-    for url in endpoints:
+    for url, payload in endpoints:
         try:
-            # POST JSON (explicit Accept helps on some setups)
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=data, method="POST")
             req.add_header("Content-Type", "application/json")
             req.add_header("Accept", "application/json")
             if AUTH_TOKEN:
                 req.add_header("Authorization", f"Bearer {AUTH_TOKEN}")
-
             with urllib.request.urlopen(req, timeout=8.0) as resp:
-                # Success (201/200). We don't need body here.
-                post_event("INFO", f"Triggered script activity: {script_name} via {url}")
-                info(f"StartProc('{script_name}') OK → {url}")
+                post_event("INFO", f"Triggered script activity via REST: {script_name} @ {url}")
+                info(f"StartProc('{script_name}') OK (REST) → {url}")
                 return True
-
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="ignore")
             last_err = f"HTTP {e.code} at {url} body={body[:200]}"
         except Exception as e:
             last_err = f"{type(e).__name__} at {url}: {e}"
 
-    # Kalau dua-duanya gagal:
-    post_event("ERROR", f"Failed to start {script_name}: {last_err}")
-    info(f"StartProc('{script_name}') FAIL: {last_err}")
-    return False
+    # ===== Fallback: local spawn =====
+    # This will not show as a separate Activity in Yamcs, but chaining works.
+    try:
+        # Resolve script path relative to Yamcs etc/scripts
+        base_dir = os.environ.get("YAMCS_ETC_SCRIPTS", "/home/yamcs/etc/scripts")
+        script_path = os.path.join(base_dir, script_name)
+
+        # If running under the same Python, use sys.executable
+        python_bin = sys.executable or "python3"
+        cmd = [python_bin, script_path] + args_list
+
+        info(f"REST unavailable → fallback spawn: {' '.join(shlex.quote(c) for c in cmd)}")
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        post_event("WARNING", f"REST 404 → spawned locally: {script_name}")
+        return True
+    except Exception as e:
+        msg = f"Failed to trigger {script_name} (REST + spawn): {e}; last REST err: {last_err}"
+        info(msg)
+        post_event("ERROR", msg)
+        return False
+
 
 
 # ================= UTIL =================
@@ -275,4 +301,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
