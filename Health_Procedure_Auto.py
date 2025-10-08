@@ -19,16 +19,16 @@ import urllib.request, urllib.error
 # ===================== KONFIG =====================
 YAMCS_HOST   = "127.0.0.1"
 YAMCS_PORT   = 8090
-INSTANCE     = "myproject"
+INSTANCE     = "simdhs"
 PROCESSOR    = "realtime"
 
-PARAM_PRIMARY      = "/myproject/Status_GSP"
-PARAM_FDIR         = "/myproject/Mode_FDIR"
-PARAM_EE_ENUM      = "/myproject/Status_EEPROM"
-PARAM_EE_BOOL      = "/myproject/Status_EEPROM_Nominal"
-PARAM_READOUT_TS   = "/myproject/EEPROM_Last_Readout_UTC"
-PARAM_READOUT_BOOL = "/myproject/EEPROM_Readout_Within_1y"
-PARAM_AUTORUN      = "/myproject/Auto_Run_Procedures"
+PARAM_PRIMARY      = "/simdhs/Status_GSP"
+PARAM_FDIR         = "/simdhs/Mode_FDIR"
+PARAM_EE_ENUM      = "/simdhs/Status_EEPROM"
+PARAM_EE_BOOL      = "/simdhs/Status_EEPROM_Nominal"
+PARAM_READOUT_TS   = "/simdhs/EEPROM_Last_Readout_UTC"
+PARAM_READOUT_BOOL = "/simdhs/EEPROM_Readout_Within_1y"
+PARAM_AUTORUN      = "/simdhs/Auto_Run_Procedures"
 
 PROC_002B = "PS6_HOP_DHS_002b_rt"
 PROC_003  = "PS6_HOP_DHS_003_rt"
@@ -234,7 +234,7 @@ def main():
     except Exception as e:
         fdir = "UNKNOWN"; info(f"Gagal baca Mode_FDIR: {e}")
 
-    health_ok = (fdir in ("STATE_OPERATIONAL","STATE_PRE_OPERATIONAL"))
+    health_ok = (fdir in ("STATE_OPERATIONAL","STATE_NO_FDIR"))
     if mode == "contingency":
         health_ok = False; info("Health dipaksa FAIL oleh mode 'contingency'")
 
@@ -311,3 +311,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
