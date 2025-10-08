@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PS6_HOP_DHS_001 — Full-auto + chaining (Yamcs REST)
+PS6_HOP_DHS_001 — Full-auto + chaining (Activities API)
 - PRIMARY  : /myproject/Status_GSP            -> GSP_1 / GSP_2
 - HEALTH   : /myproject/Mode_FDIR             -> OPERATIONAL/PRE_OPERATIONAL = sehat
 - EEPROM   : /myproject/Status_EEPROM (enum)  -> NOMINAL/NOT_NOMINAL
@@ -10,8 +10,8 @@ PS6_HOP_DHS_001 — Full-auto + chaining (Yamcs REST)
              fallback: /myproject/EEPROM_Readout_Within_1y (bool)
 - GUARD    : /myproject/Auto_Run_Procedures (bool) -> boleh trigger 002b/003
 - EVENT LOG: INFO/ERROR ke Yamcs
-- CHAINING : trigger prosedur lain via REST:
-             PS6_HOP_DHS_002b_rt, PS6_HOP_DHS_003_rt
+- CHAINING : trigger SCRIPT lain via **Activities API**:
+             PS6_HOP_DHS_002b_rt.py, PS6_HOP_DHS_003_rt.py
 - Argumen opsional:
     nominal (default)  -> jalur normal
     contingency        -> paksa health gagal (uji)
@@ -20,32 +20,32 @@ PS6_HOP_DHS_001 — Full-auto + chaining (Yamcs REST)
 import sys, json, time
 import urllib.request, urllib.error
 
-# ========== KONFIGURASI ==========
+# ================= KONFIGURASI =================
 YAMCS_HOST   = "127.0.0.1"
 YAMCS_PORT   = 8090
-INSTANCE     = "myproject"
+INSTANCE     = "simdhs"
 PROCESSOR    = "realtime"
 
-# Nama parameter TM (ubah sesuai SpaceSystem Anda)
-PARAM_PRIMARY      = "/myproject/Status_GSP"
-PARAM_FDIR         = "/myproject/Mode_FDIR"
-PARAM_EE_ENUM      = "/myproject/Status_EEPROM"
-PARAM_EE_BOOL      = "/myproject/Status_EEPROM_Nominal"
-PARAM_READOUT_TS   = "/myproject/EEPROM_Last_Readout_UTC"
-PARAM_READOUT_BOOL = "/myproject/EEPROM_Readout_Within_1y"
-PARAM_AUTORUN      = "/myproject/Auto_Run_Procedures"
+# Nama parameter TM
+PARAM_PRIMARY      = "/simdhs/Status_GSP"
+PARAM_FDIR         = "/simdhs/Mode_FDIR"
+PARAM_EE_ENUM      = "/simdhs/Status_EEPROM"
+PARAM_EE_BOOL      = "/simdhs/Status_EEPROM_Nominal"
+PARAM_READOUT_TS   = "/simdhs/EEPROM_Last_Readout_UTC"
+PARAM_READOUT_BOOL = "/simdhst/EEPROM_Readout_Within_1y"
+PARAM_AUTORUN      = "/simdhs/Auto_Run_Procedures"
 
 # Prosedur yang akan di-trigger saat chaining
 PROC_002B = "PS6_HOP_DHS_002b_rt"
 PROC_003  = "PS6_HOP_DHS_003_rt"
 
 # Opsi eksekusi
-REAL_WAIT_5_MIN = False            # set True bila mau tunggu 300s beneran
-AUTH_TOKEN      = None             # isi kalau REST pakai auth
+REAL_WAIT_5_MIN = False
+AUTH_TOKEN      = None  # isi kalau REST pakai auth (Bearer)
 EVENT_SOURCE    = "ps6_hop_dhs_001_rt.py"
 ONE_YEAR_MS     = 365 * 24 * 3600 * 1000
 
-# ========== REST HELPERS ==========
+# ================= REST HELPERS =================
 def http_get_json(url, timeout=4.0, token=None):
     req = urllib.request.Request(url)
     if token:
@@ -53,7 +53,7 @@ def http_get_json(url, timeout=4.0, token=None):
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.load(resp)
 
-def http_post_json(url, payload, timeout=6.0, token=None):
+def http_post_json(url, payload, timeout=8.0, token=None):
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
@@ -74,22 +74,24 @@ def get_value(resp):
             or ev.get("floatValue")
             or ev.get("booleanValue"))
 
-# ========== EVENTS ==========
+# ================= EVENTS =================
 def post_event(severity, message, extra=None):
     ts_ms = int(time.time()*1000)
     payload = {"message": message, "severity": severity.upper(),
                "source": EVENT_SOURCE, "time": ts_ms, "type": severity.upper()}
     if extra: payload["extra"] = extra
-    for path in (f"/api/events/{INSTANCE}", f"/api/archive/{INSTANCE}/events"):
+    endpoints = (f"/api/events/{INSTANCE}", f"/api/archive/{INSTANCE}/events")
+    for path in endpoints:
         url = f"http://{YAMCS_HOST}:{YAMCS_PORT}{path}"
         try:
             http_post_json(url, payload, token=AUTH_TOKEN)
             return True
         except Exception:
             continue
-    print("⚠️  gagal kirim event"); return False
+    print("⚠️  gagal kirim event")
+    return False
 
-# ========== LOGGING ==========
+# ================= LOGGING =================
 def step(id_, title): print(f"\n[{id_}] {title}")
 def info(msg): print(f"  - {msg}")
 def stop(msg, code=1, send_event=True):
@@ -97,28 +99,38 @@ def stop(msg, code=1, send_event=True):
     if send_event: post_event("ERROR", msg)
     sys.exit(code)
 
-# ========== CHAINING ==========
+# ================= CHAINING (Activities API) =================
 def start_procedure(name, args_list=None):
-    url = f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/procedures/{INSTANCE}/{name}/start"
-    payload = {"args": args_list or []}
+    """
+    Jalankan SCRIPT via Activities API (muncul di tab Activities).
+    name: boleh 'PS6_HOP_DHS_002b_rt' atau 'PS6_HOP_DHS_002b_rt.py'
+    """
+    script_name = name if name.endswith(".py") else f"{name}.py"
+    url = f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities/{INSTANCE}"
+    payload = {
+        "type": "SCRIPT",
+        "name": script_name,
+        "args": args_list or []
+    }
     try:
         http_post_json(url, payload, token=AUTH_TOKEN)
-        post_event("INFO", f"Triggered procedure: {name}")
-        info(f"StartProc('{name}') OK")
+        post_event("INFO", f"Triggered script activity: {script_name}")
+        info(f"StartProc('{script_name}') OK (Activities API)")
         return True
     except Exception as e:
-        post_event("ERROR", f"Failed to start {name}: {e}")
-        info(f"StartProc('{name}') FAIL: {e}")
+        post_event("ERROR", f"Failed to start {script_name}: {e}")
+        info(f"StartProc('{script_name}') FAIL: {e}")
         return False
 
-# ========== UTIL ==========
+# ================= UTIL =================
 def bool_from_tm(qname, default=None):
     try:
         v = get_value(yamcs_get_parameter(qname))
         if isinstance(v, bool): return v
         if isinstance(v, (int, float)): return bool(v)
         if isinstance(v, str): return v.strip().lower() in ("1","true","yes","on")
-    except Exception: pass
+    except Exception:
+        pass
     return default
 
 def epoch_ms_from_tm(qname):
@@ -126,17 +138,17 @@ def epoch_ms_from_tm(qname):
         v = get_value(yamcs_get_parameter(qname))
         if isinstance(v, (int, float)): return int(v)
         if isinstance(v, str) and v.isdigit(): return int(v)
-    except Exception: pass
+    except Exception:
+        pass
     return None
 
-# ========== MAIN ==========
+# ================= MAIN =================
 def main():
-    # mode ringkas: nominal (default) / contingency
     mode = sys.argv[1].lower() if len(sys.argv)>1 else "nominal"
-    print("=== PS6_HOP_DHS_001 Full-auto + chaining ===")
+    print("=== PS6_HOP_DHS_001 Full-auto + chaining (Activities API) ===")
     print(f"Mode eksekusi: {mode.upper()}")
 
-    # 1. PRIMARY
+    # 1) PRIMARY
     try:
         primary = str(get_value(yamcs_get_parameter(PARAM_PRIMARY))).strip()
         info(f"Status_GSP = {primary}")
@@ -154,7 +166,7 @@ def main():
     else:
         info("(simulasi) skip wait 5 menit")
 
-    # 2. HEALTH via FDIR
+    # 2) HEALTH via FDIR
     try:
         fdir = str(get_value(yamcs_get_parameter(PARAM_FDIR))).strip()
         info(f"Mode_FDIR = {fdir}")
@@ -170,18 +182,18 @@ def main():
         post_event("ERROR", f"Contingency: Health failed (FDIR={fdir}, Primary={primary})")
         stop("Health check gagal, prosedur dihentikan.", code=10, send_event=False)
 
-    # 3. GUARD autorun
+    # 3) GUARD autorun
     auto_run = bool_from_tm(PARAM_AUTORUN, default=True)
     info(f"Auto_Run_Procedures = {auto_run}")
 
-    # 4. Panggil 002b (2.1/3.1)
+    # 4) Panggil 002b (2.1/3.1)
     step("2/3.1", "Decoder Redundancy Checkout (002b)")
     if auto_run:
         start_procedure(PROC_002B)
     else:
         info("Auto-run dimatikan → 002b tidak dipanggil")
 
-    # 5. Cek EEPROM readout < 1y (2.2/3.2)
+    # 5) Cek EEPROM readout < 1 tahun (2.2/3.2)
     step("2/3.2", "Cek EEPROM Readout < 1 tahun")
     within_1y = bool_from_tm(PARAM_READOUT_BOOL, default=None)
     if within_1y is None:
@@ -196,7 +208,7 @@ def main():
     else:
         info(f"Readout_Within_1y (bool) = {within_1y}")
 
-    # 6. Bila >1y, panggil 003 (2.3/3.3)
+    # 6) Bila >1y, panggil 003 (2.3/3.3)
     if not within_1y:
         step("2/3.3", "EEPROM Readout & Compare (003)")
         if auto_run:
@@ -204,7 +216,7 @@ def main():
         else:
             info("Auto-run dimatikan → 003 tidak dipanggil")
 
-    # 7. EEPROM nominal? (2.4/3.4)
+    # 7) EEPROM nominal? (2.4/3.4)
     step("2/3.4", "Cek EEPROM nominal")
     eeprom_nominal = None
     try:
@@ -229,7 +241,7 @@ def main():
         post_event("ERROR", f"Contingency: EEPROM NOT nominal (Primary={primary})")
         stop("EEPROM tidak nominal → prosedur dihentikan.", code=20, send_event=False)
 
-    # 8. END
+    # 8) END
     step("999","END")
     info("cleanup('PS6_HOP_DHS_001')")
     post_event("INFO", f"END nominal (Primary={primary}, FDIR={fdir})")
