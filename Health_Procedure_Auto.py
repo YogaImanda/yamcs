@@ -102,25 +102,50 @@ def stop(msg, code=1, send_event=True):
 # ================= CHAINING (Activities API) =================
 def start_procedure(name, args_list=None):
     """
-    Jalankan SCRIPT via Activities API (muncul di tab Activities).
-    name: boleh 'PS6_HOP_DHS_002b_rt' atau 'PS6_HOP_DHS_002b_rt.py'
+    Jalankan SCRIPT via Activities API. Coba 2 endpoint agar kompatibel lintas versi YAMCS.
+    name: "PS6_HOP_DHS_002b_rt" atau "PS6_HOP_DHS_002b_rt.py"
     """
     script_name = name if name.endswith(".py") else f"{name}.py"
-    url = f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities/{INSTANCE}"
     payload = {
         "type": "SCRIPT",
         "name": script_name,
         "args": args_list or []
     }
-    try:
-        http_post_json(url, payload, token=AUTH_TOKEN)
-        post_event("INFO", f"Triggered script activity: {script_name}")
-        info(f"StartProc('{script_name}') OK (Activities API)")
-        return True
-    except Exception as e:
-        post_event("ERROR", f"Failed to start {script_name}: {e}")
-        info(f"StartProc('{script_name}') FAIL: {e}")
-        return False
+
+    # Siapkan 2 endpoint alternatif
+    endpoints = [
+        f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/activities/{INSTANCE}",
+        f"http://{YAMCS_HOST}:{YAMCS_PORT}/api/instances/{INSTANCE}/activities",
+    ]
+
+    last_err = None
+    for url in endpoints:
+        try:
+            # POST JSON (explicit Accept helps on some setups)
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, method="POST")
+            req.add_header("Content-Type", "application/json")
+            req.add_header("Accept", "application/json")
+            if AUTH_TOKEN:
+                req.add_header("Authorization", f"Bearer {AUTH_TOKEN}")
+
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                # Success (201/200). We don't need body here.
+                post_event("INFO", f"Triggered script activity: {script_name} via {url}")
+                info(f"StartProc('{script_name}') OK → {url}")
+                return True
+
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore")
+            last_err = f"HTTP {e.code} at {url} body={body[:200]}"
+        except Exception as e:
+            last_err = f"{type(e).__name__} at {url}: {e}"
+
+    # Kalau dua-duanya gagal:
+    post_event("ERROR", f"Failed to start {script_name}: {last_err}")
+    info(f"StartProc('{script_name}') FAIL: {last_err}")
+    return False
+
 
 # ================= UTIL =================
 def bool_from_tm(qname, default=None):
@@ -250,3 +275,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
