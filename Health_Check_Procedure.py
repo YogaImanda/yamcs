@@ -14,12 +14,12 @@ import urllib.request
 # -------------------- CONFIG --------------------
 YAMCS_HOST = "127.0.0.1"
 YAMCS_PORT = 8090
-INSTANCE = "myproject"
+INSTANCE = "simdhs"
 PROCESSOR = "realtime"
-PARAM_PRIMARY = "/myproject/Status_GSP"
+PARAM_PRIMARY = "/simdhs/Status_GSP"
 
 # Bisa diubah ke parameter lain nanti
-PARAM_FDIR = "/myproject/Mode_FDIR"
+PARAM_FDIR = "/simdhs/Mode_FDIR"
 
 # -------------------- UTILS ---------------------
 def yamcs_get_parameter(qname):
@@ -96,3 +96,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
