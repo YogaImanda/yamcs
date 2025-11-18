@@ -1,41 +1,81 @@
-# File: PS6_HOP_DHS_003.py
-from yamcs import Procedure, prompt
+<h2 mat-dialog-title>Run later</h2>
 
-# Stub fungsi helper
+<mat-dialog-content>
+  <div class="hint">
+    <p>
+      This script will be submitted to the Yamcs Timeline, for execution at a later time.
+    </p>
+  </div>
 
+  <form [formGroup]="form" class="ya-form">
+    <!-- Execution time (existing) -->
+    <ya-field label="Execution time">
+      <ya-date-time-input
+        formControlName="executionTime"
+        [showMillis]="true"
+        [showNow]="true" />
+    </ya-field>
 
-def procedure_initialize(apType, procName, ARGS):
-    return {}
+    <!-- Timeline tags (existing) -->
+    <ya-field label="Timeline tags" hint="(optional)">
+      <ya-help dialogTitle="Timeline Tags">
+        Tags allow to categorise items per band. Bands only show items for which one of the tags is
+        matching.
+      </ya-help>
+      <ya-tag-select formControlName="tags" />
+    </ya-field>
 
+    <!-- ===================== NEW: Repeat section ===================== -->
+    <mat-divider></mat-divider>
 
-def mainStepFlowControl(stepId, stepName, g):
-    pass
+    <h3 class="section-title">Repeat options</h3>
 
+    <!-- Pilihan mode repeat -->
+    <ya-field label="Mode">
+      <mat-radio-group formControlName="repeatType">
+        <mat-radio-button value="none">Run once</mat-radio-button>
+        <mat-radio-button value="interval">Repeat every…</mat-radio-button>
+      </mat-radio-group>
+    </ya-field>
 
-def stepFlowControl(stepId, stepName, g):
-    pass
+    <!-- Konfigurasi interval jika repeatType = 'interval' -->
+    <div *ngIf="form.value.repeatType === 'interval'">
+      <ya-field label="Interval">
+        <div class="interval-row">
+          <mat-form-field appearance="outline" class="interval-value">
+            <input
+              matInput
+              type="number"
+              min="1"
+              formControlName="repeatValue" />
+          </mat-form-field>
 
+          <mat-form-field appearance="outline" class="interval-unit">
+            <mat-select formControlName="repeatUnit">
+              <mat-option value="minutes">Minutes</mat-option>
+              <mat-option value="hours">Hours</mat-option>
+              <mat-option value="days">Days</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+      </ya-field>
 
-def cleanup(procName):
-    pass
+      <ya-field label="End date (optional)">
+        <ya-date-time-input formControlName="endDate"></ya-date-time-input>
+      </ya-field>
+    </div>
+    <!-- ============================================================= -->
+  </form>
+</mat-dialog-content>
 
-# ------------------------------------------------------------------------
-# Main Procedure
-# ------------------------------------------------------------------------
+<mat-dialog-actions align="end">
+  <div style="flex: 1 1 auto"></div>
 
-
-def run(proc: Procedure, apType="SHIP", ARGS=None):
-    proc.step("INIT", "Initialization")
-    g = procedure_initialize(apType, "PS6_HOP_DHS_003", ARGS)
-
-    proc.step("START", "Begin EEPROM Readout and Comparison")
-    mainStepFlowControl("START", "Begin EEPROM Readout and Comparison", g)
-
-    # TODO: tambahkan logika actual readout EEPROM & compare dengan ground image
-    prompt.ok("Performing EEPROM Readout and Comparison... (placeholder)")
-
-    proc.step("999", "END")
-    mainStepFlowControl("999", "END", g)
-    cleanup("PS6_HOP_DHS_003")
-
-    proc.step("END", "End PS6_HOP_DHS_003")
+  <ya-button mat-dialog-close>CANCEL</ya-button>
+  <ya-button
+    appearance="primary"
+    (click)="schedule()"
+    [disabled]="!form.valid">
+    SCHEDULE
+  </ya-button>
+</mat-dialog-actions>
