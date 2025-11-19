@@ -6,12 +6,12 @@ import {
   YamcsService,
   TimelineItem,
 } from '@yamcs/webapp-sdk';
-import { AsyncPipe, DatePipe, NgForOf, NgIf } from '@angular/common';
+import { NgForOf, NgIf, DatePipe } from '@angular/common';
 
 @Component({
   templateUrl: './scheduled-scripts.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [WebappSdkModule, NgForOf, NgIf, AsyncPipe, DatePipe],
+  imports: [WebappSdkModule, NgForOf, NgIf, DatePipe],
 })
 export class ScheduledScriptsComponent {
 
@@ -33,17 +33,22 @@ export class ScheduledScriptsComponent {
     const now = new Date();
     const start = now.toISOString();
     // misal 30 hari ke depan
-    const stop = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const stop = new Date(
+      now.getTime() + 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
 
-    this.yamcs.yamcsClient.getTimelineItems(this.yamcs.instance!, {
-      start,
-      stop,
-      type: 'ACTIVITY',
-    })
+    this.yamcs.yamcsClient
+      .getTimelineItems(this.yamcs.instance!, {
+        start,
+        stop,
+        details: true, // supaya activityDefinition ikut dikirim
+      })
       .then(page => {
         this.items =
           (page.items || []).filter(item =>
-            item.activity && item.activity.type === 'SCRIPT'
+            item.type === 'ACTIVITY' &&
+            item.activityDefinition &&
+            item.activityDefinition.type === 'SCRIPT'
           );
         this.loading = false;
       })
@@ -52,6 +57,4 @@ export class ScheduledScriptsComponent {
         this.loading = false;
       });
   }
-
-  // (opsional) nanti bisa ditambah fungsi delete/cancel di sini
 }
