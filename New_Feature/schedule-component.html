@@ -20,4 +20,22 @@
     <tr>
       <th>Id</th>
       <th>Start</th>
-      <th>
+      <th>Type</th>
+      <th>Detail</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Kalau items.length == 0, tbody akan kosong -> sama seperti Activities
+         saat filter tidak ketemu apa-apa -->
+    <tr *ngFor="let item of items">
+      <td>{{ item.id || item.name || item.activityId }}</td>
+      <td>
+        {{ (item.start || item.startTime) | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }} UTC
+      </td>
+      <td>{{ item.activityDefinition?.type || item.detail?.type || 'SCRIPT' }}</td>
+      <td>{{ item.activityDefinition?.args?.script || item.detail?.name || '-' }}</td>
+      <td>{{ item.executionStatus || item.activityExecution?.status || 'PLANNED' }}</td>
+    </tr>
+  </tbody>
+</table>
