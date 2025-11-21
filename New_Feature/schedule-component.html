@@ -1,31 +1,45 @@
 <h2>Scheduled scripts</h2>
 
-<div *ngIf="loading">Loading…</div>
+<!-- DEBUG: status -->
+<p style="font-size: 12px; opacity: .7;">
+  loading={{ loading }} |
+  items={{ items?.length || 0 }} |
+  error={{ lastError || 'none' }}
+</p>
 
-<div *ngIf="!loading && !items.length">
+<div *ngIf="loading">
+  Loading...
+</div>
+
+<div *ngIf="!loading && lastError">
+  <p style="color: red;">
+    Error: {{ lastError }}
+  </p>
+</div>
+
+<div *ngIf="!loading && !lastError && !items.length">
   <p>No scheduled script found in the selected window.</p>
 </div>
 
-<table class="ya-table" *ngIf="!loading && items.length">
+<table class="ya-table" *ngIf="!loading && !lastError && items.length">
   <thead>
     <tr>
       <th>Script</th>
       <th>Start time (UTC)</th>
       <th>Tags</th>
-      <!-- nanti bisa tambah kolom lain -->
     </tr>
   </thead>
   <tbody>
     <tr *ngFor="let item of items">
       <td>{{ item.name }}</td>
-      <td>{{ item.start | date:'yyyy-MM-dd HH:mm:ss':'UTC' }}</td>
+      <td>{{ item.start | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }}</td>
       <td>
         <ng-container *ngIf="item.tags?.length; else noTags">
           <span *ngFor="let tag of item.tags; let last = last">
             {{ tag }}<span *ngIf="!last">, </span>
           </span>
         </ng-container>
-        <ng-template #noTags>–</ng-template>
+        <ng-template #noTags>-</ng-template>
       </td>
     </tr>
   </tbody>
