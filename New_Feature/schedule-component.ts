@@ -33,45 +33,30 @@ export class ScheduledScriptsComponent {
     this.loading = true;
     this.lastError = undefined;
 
-    const now = new Date();
-    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();  // 1 hari ke belakang
-    const stop  = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 hari ke depan
+    const instance = this.yamcs.instance!;
+    const processor = this.yamcs.processor!;
 
-    console.log('[ScheduledScripts] load()', {
-      instance: this.yamcs.instance,
-      start,
-      stop,
-    });
+    console.log('[ScheduledScripts] API:',
+      `/api/processors/${instance}/${processor}/procedures/scheduled`
+    );
 
-    try {
-      const client: any = this.yamcs.yamcsClient;
-      if (!client || typeof client.getTimelineItems !== 'function') {
-        const msg = 'yamcsClient.getTimelineItems() tidak tersedia';
-        console.error('[ScheduledScripts] ' + msg, client);
-        this.lastError = msg;
+    this.yamcs.yamcsClient
+      .request(
+        'GET',
+        `/api/processors/${instance}/${processor}/procedures/scheduled`
+      )
+      .then((response: any) => {
+        console.log('[ScheduledScripts] response:', response);
+        this.items = response?.entries || [];
+      })
+      .catch((err: any) => {
+        console.error('[ScheduledScripts] error:', err);
+        this.lastError = err?.message || String(err);
+        this.messageService.showError(err);
+      })
+      .finally(() => {
         this.loading = false;
-        return;
-      }
-
-      client.getTimelineItems(this.yamcs.instance!, { start, stop })
-        .then((page: any) => {
-          console.log('[ScheduledScripts] page', page);
-          this.items = page?.items || [];
-        })
-        .catch((err: any) => {
-          console.error('[ScheduledScripts] error from API', err);
-          this.lastError = (err && err.message) ? err.message : String(err);
-          this.messageService.showError(err);
-        })
-        .finally(() => {
-          this.loading = false;
-          console.log('[ScheduledScripts] done, loading =', this.loading,
-            'items =', this.items?.length);
-        });
-    } catch (e: any) {
-      console.error('[ScheduledScripts] synchronous error', e);
-      this.lastError = (e && e.message) ? e.message : String(e);
-      this.loading = false;
-    }
+        console.log('[ScheduledScripts] DONE loading=', this.loading);
+      });
   }
 }
