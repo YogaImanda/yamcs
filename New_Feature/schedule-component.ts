@@ -30,8 +30,7 @@ export class ScheduledScriptsComponent {
   }
 
   /**
-   * Load daftar script yang DISCHEDULE dari REST API timeline.
-   * Kita pakai window.fetch supaya tidak tergantung method khusus di YamcsClient.
+   * Ambil daftar scheduled script dari REST API timeline.
    */
   load() {
     this.loading = true;
@@ -40,74 +39,77 @@ export class ScheduledScriptsComponent {
     const instance = this.yamcs.instance!;
     const now = new Date();
 
-    // jendela waktu: 1 hari ke belakang sampai 30 hari ke depan
+    // jendela waktu: 1 hari ke belakang s/d 30 hari ke depan
     const start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const stop  = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const params = new URLSearchParams({
       start,
       stop,
-      // detail=true supaya field-field tambahan (detail, executionStatus, dll) ikut dikirim
       detail: 'true',
     });
 
     const url = `/api/timeline/${encodeURIComponent(instance)}/items?${params.toString()}`;
+    console.log('[ScheduledScripts] fetch URL =', url);
 
-    console.log('[ScheduledScripts] fetching', url);
+    try {
+      const fetchFn: any = (window as any).fetch;
 
-    // pakai window.fetch agar TypeScript mengenali fungsi ini
-    window.fetch(url, {
-      credentials: 'same-origin', // kirim cookie session yamcs
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then(json => {
-        console.log('[ScheduledScripts] raw response', json);
+      if (typeof fetchFn !== 'function') {
+        const msg = 'window.fetch tidak tersedia di browser ini';
+        console.error('[ScheduledScripts] ' + msg);
+        this.lastError = msg;
+        this.loading = false;
+        return;
+      }
 
-        const allItems = json?.items || [];
+      fetchFn(url, { credentials: 'same-origin' })
+        .then((response: Response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} ${response.statusText}`);
+          }
+          return response.json();
+        })
+        .then((json: any) => {
+          console.log('[ScheduledScripts] raw response:', json);
 
-        // Filter hanya activity yang terkait SCRIPT dan statusnya future (PLANNED/SCHEDULED/PENDING)
-        this.items = allItems.filter((item: any) => {
-          const type = (item.type || '').toUpperCase();
-          const detailType = (item.detail?.type || '').toUpperCase();
-          const status =
-            (item.executionStatus ||
-             item.detail?.executionStatus ||
-             '').toUpperCase();
+          const allItems = json?.items || [];
 
-          const isScript =
-            type === 'SCRIPT' ||
-            detailType === 'SCRIPT';
+          // Filter: hanya activity SCRIPT yang statusnya future (PLANNED/SCHEDULED/PENDING)
+          this.items = allItems.filter((item: any) => {
+            const type = (item.type || '').toUpperCase();
+            const detailType = (item.detail?.type || '').toUpperCase();
+            const status =
+              (item.executionStatus ||
+               item.detail?.executionStatus ||
+               '').toUpperCase();
 
-          const isPlanned =
-            status === 'PLANNED' ||
-            status === 'SCHEDULED' ||
-            status === 'PENDING';
+            const isScript =
+              type === 'SCRIPT' ||
+              detailType === 'SCRIPT';
 
-          return isScript && isPlanned;
+            const isPlanned =
+              status === 'PLANNED' ||
+              status === 'SCHEDULED' ||
+              status === 'PENDING';
+
+            return isScript && isPlanned;
+          });
+
+          console.log('[ScheduledScripts] filtered items:', this.items);
+          this.loading = false;
+        })
+        .catch((err: any) => {
+          console.error('[ScheduledScripts] async error:', err);
+          this.lastError = err?.message || String(err);
+          this.messageService.showError(err);
+          this.loading = false;
         });
 
-        console.log('[ScheduledScripts] filtered items', this.items);
-      })
-      .catch(err => {
-        console.error('[ScheduledScripts] error', err);
-        this.lastError = err?.message || String(err);
-        this.messageService.showError(err);
-      })
-      .finally(() => {
-        this.loading = false;
-        console.log(
-          '[ScheduledScripts] DONE loading=',
-          this.loading,
-          'items=',
-          this.items.length,
-          'error=',
-          this.lastError,
-        );
-      });
+    } catch (e: any) {
+      console.error('[ScheduledScripts] sync error:', e);
+      this.lastError = e?.message || String(e);
+      this.loading = false;
+    }
   }
 }
