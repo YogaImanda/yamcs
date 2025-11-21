@@ -1,17 +1,12 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { Component } from '@angular/core';
 import { Title } from '@angular/platform-browser';
-import {
-  MessageService,
-  WebappSdkModule,
-  YamcsService,
-  TimelineItem,
-} from '@yamcs/webapp-sdk';
-import { NgForOf, NgIf, DatePipe } from '@angular/common';
+import { YamcsService } from '../../core/services/YamcsService';
+import { MessageService } from '../../core/services/message.service';
+import { TimelineItem } from '../../shared/TimelineItem';
 
 @Component({
-  templateUrl: './scheduled-scripts.component.html',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [WebappSdkModule, NgForOf, NgIf, DatePipe],
+  selector: 'app-scheduled-scripts',
+  templateUrl: './scheduled-script.component.html',
 })
 export class ScheduledScriptsComponent {
 
@@ -31,30 +26,31 @@ export class ScheduledScriptsComponent {
     this.loading = true;
 
     const now = new Date();
-    const start = now.toISOString();
-    // misal 30 hari ke depan
-    const stop = new Date(
-      now.getTime() + 30 * 24 * 60 * 60 * 1000,
-    ).toISOString();
+
+    // contoh: ambil item dari 1 hari ke belakang sampai 30 hari ke depan
+    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const stop  = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    console.log('[ScheduledScripts] load()', { start, stop, instance: this.yamcs.instance });
 
     this.yamcs.yamcsClient
-      .getTimelineItems(this.yamcs.instance!, {
-        start,
-        stop,
-        details: true, // supaya activityDefinition ikut dikirim
-      })
+      .getTimelineItems(this.yamcs.instance!, { start, stop } as any)
       .then(page => {
-        this.items =
-          (page.items || []).filter(item =>
-            item.type === 'ACTIVITY' &&
-            item.activityDefinition &&
-            item.activityDefinition.type === 'SCRIPT'
-          );
-        this.loading = false;
+        console.log('[ScheduledScripts] page', page);
+
+        this.items = (page.items || []).filter(item =>
+          item.type === 'ACTIVITY' &&
+          item.activityDefinition &&                       // punya activity definition
+          item.activityDefinition.type === 'PROC'          // sesuaikan filter kamu
+          // atau bisa cek tag: item.tags?.includes('SCHEDULED')
+        );
       })
       .catch(err => {
+        console.error('[ScheduledScripts] error', err);
         this.messageService.showError(err);
-        this.loading = false;
+      })
+      .finally(() => {
+        this.loading = false;      // ⬅️ PENTING: selalu matikan loading di sini
       });
   }
 }
