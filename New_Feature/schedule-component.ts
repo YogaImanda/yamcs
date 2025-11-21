@@ -1,17 +1,23 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { Title } from '@angular/platform-browser';
-import { YamcsService } from '../../core/services/YamcsService';
-import { MessageService } from '../../core/services/message.service';
-import { TimelineItem } from '../../shared/TimelineItem';
+
+import {
+  MessageService,
+  WebappSdkModule,
+  YamcsService,
+} from '@yamcs/webapp-sdk';
 
 @Component({
   selector: 'app-scheduled-scripts',
-  templateUrl: './scheduled-script.component.html',
+  templateUrl: './schedule-script.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  imports: [WebappSdkModule],
 })
 export class ScheduledScriptsComponent {
 
-  items: TimelineItem[] = [];
   loading = true;
+  items: any[] = [];
 
   constructor(
     title: Title,
@@ -27,30 +33,31 @@ export class ScheduledScriptsComponent {
 
     const now = new Date();
 
-    // contoh: ambil item dari 1 hari ke belakang sampai 30 hari ke depan
+    // ambil item timeline dari 1 hari ke belakang sampai 30 hari ke depan
     const start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const stop  = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    console.log('[ScheduledScripts] load()', { start, stop, instance: this.yamcs.instance });
+    console.log('[ScheduledScripts] load()', {
+      instance: this.yamcs.instance,
+      start,
+      stop,
+    });
 
     this.yamcs.yamcsClient
       .getTimelineItems(this.yamcs.instance!, { start, stop } as any)
       .then(page => {
         console.log('[ScheduledScripts] page', page);
 
-        this.items = (page.items || []).filter(item =>
-          item.type === 'ACTIVITY' &&
-          item.activityDefinition &&                       // punya activity definition
-          item.activityDefinition.type === 'PROC'          // sesuaikan filter kamu
-          // atau bisa cek tag: item.tags?.includes('SCHEDULED')
-        );
+        // Sederhana dulu: tampilkan semua item.
+        // Nanti kalau mau, bisa difilter khusus yang related ke script.
+        this.items = page.items || [];
       })
       .catch(err => {
         console.error('[ScheduledScripts] error', err);
         this.messageService.showError(err);
       })
       .finally(() => {
-        this.loading = false;      // ⬅️ PENTING: selalu matikan loading di sini
+        this.loading = false;
       });
   }
 }
