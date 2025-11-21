@@ -1,46 +1,50 @@
 <h2>Scheduled scripts</h2>
 
-<!-- DEBUG: status -->
-<p style="font-size: 12px; opacity: .7;">
-  loading={{ loading }} |
-  items={{ items?.length || 0 }} |
-  error={{ lastError || 'none' }}
-</p>
-
+<!-- Loading state -->
 <div *ngIf="loading">
   Loading...
 </div>
 
-<div *ngIf="!loading && lastError">
-  <p style="color: red;">
-    Error: {{ lastError }}
-  </p>
+<!-- Error state -->
+<div *ngIf="!loading && lastError" style="color: red; margin-top: 8px;">
+  Error: {{ lastError }}
 </div>
 
-<div *ngIf="!loading && !lastError && !items.length">
-  <p>No scheduled script found in the selected window.</p>
-</div>
-
-<table class="ya-table" *ngIf="!loading && !lastError && items.length">
+<!-- Tabel utama: hanya tampil kalau tidak loading & tidak error -->
+<table *ngIf="!loading && !lastError" class="ya-table">
   <thead>
     <tr>
-      <th>Script</th>
-      <th>Start time (UTC)</th>
-      <th>Tags</th>
+      <th style="width: 40px;"></th> <!-- icon/status kalau mau nanti -->
+      <th>Id</th>
+      <th>Start</th>
+      <th>Type</th>
+      <th>Detail</th>
+      <th>Status</th>
     </tr>
   </thead>
   <tbody>
+    <!-- Row untuk setiap scheduled script.
+         Kalau items.length == 0, tbody akan kosong (seperti Activities kalau filter tidak ketemu apa-apa) -->
     <tr *ngFor="let item of items">
-      <td>{{ item.name }}</td>
-      <td>{{ item.start | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }}</td>
+      <!-- Kolom icon/status (sementara kosong, nanti bisa diisi icon hijau/merah) -->
+      <td></td>
+
+      <!-- Id: pakai item.id / item.name / item.activityId tergantung struktur JSON -->
+      <td>{{ item.id || item.name || item.activityId }}</td>
+
+      <!-- Start time -->
       <td>
-        <ng-container *ngIf="item.tags?.length; else noTags">
-          <span *ngFor="let tag of item.tags; let last = last">
-            {{ tag }}<span *ngIf="!last">, </span>
-          </span>
-        </ng-container>
-        <ng-template #noTags>-</ng-template>
+        {{ (item.start || item.startTime) | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }} UTC
       </td>
+
+      <!-- Type (SCRIPT, dsb) -->
+      <td>{{ (item.type || item.detail?.type) || 'SCRIPT' }}</td>
+
+      <!-- Detail: nama script -->
+      <td>{{ item.detail?.name || item.name || item.detail?.script || '-' }}</td>
+
+      <!-- Status (PLANNED/SCHEDULED/PENDING/…) -->
+      <td>{{ item.executionStatus || item.detail?.executionStatus || 'PLANNED' }}</td>
     </tr>
   </tbody>
 </table>
