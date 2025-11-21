@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { Title } from '@angular/platform-browser';
-
 import {
   MessageService,
   WebappSdkModule,
@@ -8,10 +7,8 @@ import {
 } from '@yamcs/webapp-sdk';
 
 @Component({
-  selector: 'app-scheduled-scripts',
   templateUrl: './schedule-script.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  standalone: true,
   imports: [WebappSdkModule],
 })
 export class ScheduledScriptsComponent {
@@ -30,7 +27,9 @@ export class ScheduledScriptsComponent {
   }
 
   /**
-   * Ambil daftar scheduled script dari REST API timeline.
+   * Ambil daftar scheduled script dari timeline Yamcs.
+   * Kita pakai API resmi yamcsClient.getTimelineItems(), sama gaya
+   * dengan pemanggilan API lain di RunScriptComponent.
    */
   load() {
     this.loading = true;
@@ -39,77 +38,59 @@ export class ScheduledScriptsComponent {
     const instance = this.yamcs.instance!;
     const now = new Date();
 
-    // jendela waktu: 1 hari ke belakang s/d 30 hari ke depan
+    // Jendela waktu: 1 hari ke belakang s/d 30 hari ke depan
     const start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const stop  = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const params = new URLSearchParams({
-      start,
-      stop,
-      detail: 'true',
-    });
+    console.log('[ScheduledScripts] load()', { instance, start, stop });
 
-    const url = `/api/timeline/${encodeURIComponent(instance)}/items?${params.toString()}`;
-    console.log('[ScheduledScripts] fetch URL =', url);
+    // cast ke any supaya tidak pusing tipe opsinya
+    (this.yamcs.yamcsClient as any)
+      .getTimelineItems(instance, {
+        start,
+        stop,
+        detail: true,
+      } as any)
+      .then((page: any) => {
+        console.log('[ScheduledScripts] raw timeline items', page);
 
-    try {
-      const fetchFn: any = (window as any).fetch;
+        const allItems = page?.items || [];
 
-      if (typeof fetchFn !== 'function') {
-        const msg = 'window.fetch tidak tersedia di browser ini';
-        console.error('[ScheduledScripts] ' + msg);
-        this.lastError = msg;
-        this.loading = false;
-        return;
-      }
+        // Filter: hanya activity SCRIPT yang statusnya future (PLANNED/SCHEDULED/PENDING)
+        this.items = allItems.filter((item: any) => {
+          const type = (item.type || '').toUpperCase();
+          const detailType = (item.activityDefinition?.type ||
+                              item.detail?.type ||
+                              '').toUpperCase();
 
-      fetchFn(url, { credentials: 'same-origin' })
-        .then((response: Response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status} ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then((json: any) => {
-          console.log('[ScheduledScripts] raw response:', json);
+          const status = (
+            item.executionStatus ||
+            item.activityExecution?.status ||
+            item.detail?.executionStatus ||
+            ''
+          ).toUpperCase();
 
-          const allItems = json?.items || [];
+          const isScript =
+            type === 'ACTIVITY' &&
+            (detailType === 'SCRIPT' || detailType === 'PROCEDURE');
 
-          // Filter: hanya activity SCRIPT yang statusnya future (PLANNED/SCHEDULED/PENDING)
-          this.items = allItems.filter((item: any) => {
-            const type = (item.type || '').toUpperCase();
-            const detailType = (item.detail?.type || '').toUpperCase();
-            const status =
-              (item.executionStatus ||
-               item.detail?.executionStatus ||
-               '').toUpperCase();
+          const isPlanned =
+            status === 'PLANNED' ||
+            status === 'SCHEDULED' ||
+            status === 'PENDING' ||
+            status === 'FUTURE';
 
-            const isScript =
-              type === 'SCRIPT' ||
-              detailType === 'SCRIPT';
-
-            const isPlanned =
-              status === 'PLANNED' ||
-              status === 'SCHEDULED' ||
-              status === 'PENDING';
-
-            return isScript && isPlanned;
-          });
-
-          console.log('[ScheduledScripts] filtered items:', this.items);
-          this.loading = false;
-        })
-        .catch((err: any) => {
-          console.error('[ScheduledScripts] async error:', err);
-          this.lastError = err?.message || String(err);
-          this.messageService.showError(err);
-          this.loading = false;
+          return isScript && isPlanned;
         });
 
-    } catch (e: any) {
-      console.error('[ScheduledScripts] sync error:', e);
-      this.lastError = e?.message || String(e);
-      this.loading = false;
-    }
+        console.log('[ScheduledScripts] filtered items', this.items);
+        this.loading = false;
+      })
+      .catch((err: any) => {
+        console.error('[ScheduledScripts] error', err);
+        this.lastError = err?.message || String(err);
+        this.messageService.showError(err);
+        this.loading = false;
+      });
   }
 }
