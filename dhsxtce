@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SpaceSystem name="simdhs"
+  xmlns="http://www.omg.org/spec/XTCE/20180204"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.omg.org/spec/XTCE/20180204 https://www.omg.org/spec/XTCE/20180204/SpaceSystem.xsd">
+
+  <TelemetryMetaData>
+    <ParameterTypeSet>
+      <!-- CCSDS header types -->
+      <IntegerParameterType name="CCSDS_Version_Type" signed="false">
+        <IntegerDataEncoding sizeInBits="3"/>
+      </IntegerParameterType>
+      <BooleanParameterType name="CCSDS_Type_Type" zeroStringValue="TM" oneStringValue="TC">
+        <IntegerDataEncoding sizeInBits="1"/>
+      </BooleanParameterType>
+      <BooleanParameterType name="CCSDS_Sec_Hdr_Flag_Type" zeroStringValue="NotPresent" oneStringValue="Present">
+        <IntegerDataEncoding sizeInBits="1"/>
+      </BooleanParameterType>
+      <IntegerParameterType name="CCSDS_APID_Type" signed="false">
+        <IntegerDataEncoding sizeInBits="11"/>
+      </IntegerParameterType>
+      <EnumeratedParameterType name="CCSDS_Group_Flags_Type">
+        <IntegerDataEncoding sizeInBits="2"/>
+        <EnumerationList>
+          <Enumeration value="0" label="Continuation"/>
+          <Enumeration value="1" label="First"/>
+          <Enumeration value="2" label="Last"/>
+          <Enumeration value="3" label="Standalone"/>
+        </EnumerationList>
+      </EnumeratedParameterType>
+      <IntegerParameterType name="CCSDS_Source_Sequence_Count_Type" signed="false">
+        <IntegerDataEncoding sizeInBits="14"/>
+      </IntegerParameterType>
+      <IntegerParameterType name="CCSDS_Packet_Length_Type" signed="false">
+        <IntegerDataEncoding sizeInBits="16"/>
+      </IntegerParameterType>
+
+      <!-- Custom parameter types -->
+      <FloatParameterType name="float_t">
+        <FloatDataEncoding sizeInBits="32"/>
+      </FloatParameterType>
+      <BooleanParameterType name="bool_t">
+        <IntegerDataEncoding sizeInBits="8"/>
+      </BooleanParameterType>
+      <IntegerParameterType name="uint32_t" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="32"/>
+      </IntegerParameterType>
+      <BooleanParameterType name="status_bool_t" zeroStringValue="FAULT" oneStringValue="OK">
+        <IntegerDataEncoding sizeInBits="8"/>
+      </BooleanParameterType>
+      <EnumeratedParameterType name="status_enum_t">
+        <IntegerDataEncoding sizeInBits="8"/>
+        <EnumerationList>
+          <Enumeration value="0" label="FAULT"/>
+          <Enumeration value="1" label="OK"/>
+        </EnumerationList>
+      </EnumeratedParameterType>
+    </ParameterTypeSet>
+
+    <ParameterSet>
+      CCSDS header parameters
+      <Parameter name="CCSDS_Packet_ID" parameterTypeRef="CCSDS_Version_Type"/>
+      <Parameter name="CCSDS_Type" parameterTypeRef="CCSDS_Type_Type"/>
+      <Parameter name="CCSDS_Sec_Hdr_Flag" parameterTypeRef="CCSDS_Sec_Hdr_Flag_Type"/>
+      <Parameter name="CCSDS_APID" parameterTypeRef="CCSDS_APID_Type"/>
+      <Parameter name="CCSDS_Group_Flags" parameterTypeRef="CCSDS_Group_Flags_Type"/>
+      <Parameter name="CCSDS_Source_Sequence_Count" parameterTypeRef="CCSDS_Source_Sequence_Count_Type"/>
+      <Parameter name="CCSDS_Packet_Length" parameterTypeRef="CCSDS_Packet_Length_Type"/>
+
+      <!-- Custom TM parameters -->
+      <Parameter name="Mode_ADCS" parameterTypeRef="status_enum_t"/>
+      <Parameter name="Mode_OBSW" parameterTypeRef="status_enum_t"/>
+      <Parameter name="Mode_FDIR" parameterTypeRef="float_t"/>
+      <Parameter name="V_Bat" parameterTypeRef="float_t"/>
+      <Parameter name="I_Bat" parameterTypeRef="float_t"/>
+      <Parameter name="Temp_1" parameterTypeRef="float_t"/>
+      <Parameter name="Temp_2" parameterTypeRef="float_t"/>
+      <Parameter name="Temp_3" parameterTypeRef="float_t"/>
+      <Parameter name="Temp_4" parameterTypeRef="float_t"/>
+      <Parameter name="Roll" parameterTypeRef="float_t"/>
+      <Parameter name="Pitch" parameterTypeRef="float_t"/>
+      <Parameter name="Yaw" parameterTypeRef="float_t"/>
+    </ParameterSet>
+
+    <ContainerSet>
+      <SequenceContainer name="CCSDSPacket">
+        <EntryList>
+          <ParameterRefEntry parameterRef="CCSDS_Packet_ID"/>
+          <ParameterRefEntry parameterRef="CCSDS_Type"/>
+          <ParameterRefEntry parameterRef="CCSDS_Sec_Hdr_Flag"/>
+          <ParameterRefEntry parameterRef="CCSDS_APID"/>
+          <ParameterRefEntry parameterRef="CCSDS_Group_Flags"/>
+          <ParameterRefEntry parameterRef="CCSDS_Source_Sequence_Count"/>
+          <ParameterRefEntry parameterRef="CCSDS_Packet_Length"/>
+        </EntryList>
+      </SequenceContainer>
+      <SequenceContainer name="TelemetryPacket">
+        <BaseContainer containerRef="CCSDSPacket"/>
+        <EntryList>
+          <ParameterRefEntry parameterRef="Mode_ADCS" bitOffset="0"/>
+          <ParameterRefEntry parameterRef="Mode_OBSW" bitOffset="8"/>
+          <ParameterRefEntry parameterRef="Mode_FDIR" bitOffset="16"/>
+          <ParameterRefEntry parameterRef="V_Bat"  bitOffset="24"/>
+          <ParameterRefEntry parameterRef="I_Bat"  bitOffset="56"/>
+          <ParameterRefEntry parameterRef="Temp_1"  bitOffset="88"/>
+          <ParameterRefEntry parameterRef="Temp_2"  bitOffset="120"/>
+          <ParameterRefEntry parameterRef="Temp_3"  bitOffset="152"/>
+          <ParameterRefEntry parameterRef="Temp_4"  bitOffset="184"/>
+          <ParameterRefEntry parameterRef="Roll"  bitOffset="216"/>
+          <ParameterRefEntry parameterRef="Pitch"  bitOffset="248"/>
+          <ParameterRefEntry parameterRef="Yaw"  bitOffset="280"/>
+        </EntryList>
+      </SequenceContainer>
+    </ContainerSet>
+  </TelemetryMetaData>
+
+  <CommandMetaData>
+  <ArgumentTypeSet>
+    <IntegerArgumentType name="CCSDS_Version_Type" signed="false">
+      <IntegerDataEncoding sizeInBits="3" />
+    </IntegerArgumentType>
+    <BooleanArgumentType name="CCSDS_Type_Type" zeroStringValue="TM" oneStringValue="TC">
+      <IntegerDataEncoding sizeInBits="1" />
+    </BooleanArgumentType>
+    <BooleanArgumentType name="CCSDS_Sec_Hdr_Flag_Type" zeroStringValue="NotPresent" oneStringValue="Present">
+      <IntegerDataEncoding sizeInBits="1" />
+    </BooleanArgumentType>
+    <IntegerArgumentType name="CCSDS_APID_Type" signed="false">
+      <IntegerDataEncoding sizeInBits="11" />
+    </IntegerArgumentType>
+    <EnumeratedArgumentType name="CCSDS_Group_Flags_Type">
+      <IntegerDataEncoding sizeInBits="2" />
+      <EnumerationList>
+        <Enumeration value="0" label="Continuation" />
+        <Enumeration value="1" label="First" />
+        <Enumeration value="2" label="Last" />
+        <Enumeration value="3" label="Standalone" />
+      </EnumerationList>
+    </EnumeratedArgumentType>
+    <IntegerArgumentType name="Packet_ID_Type" signed="false">
+      <IntegerDataEncoding sizeInBits="16" />
+    </IntegerArgumentType>
+    <IntegerArgumentType name="Battery_Type" signed="false">
+      <IntegerDataEncoding encoding="unsigned" sizeInBits="16" />
+      <ValidRangeSet>
+        <ValidRange minInclusive="1" maxInclusive="2" />
+      </ValidRangeSet>
+    </IntegerArgumentType>
+    <IntegerArgumentType name="uint32_t" signed="false">
+      <IntegerDataEncoding encoding="unsigned" sizeInBits="32" />
+    </IntegerArgumentType>
+  </ArgumentTypeSet>
+  <MetaCommandSet>
+    <!-- CCSDS abstract base (sama) -->
+    <MetaCommand name="CCSDSPacket" abstract="true">
+      <ArgumentList>
+        <Argument argumentTypeRef="CCSDS_Version_Type" name="CCSDS_Version" />
+        <Argument argumentTypeRef="CCSDS_Type_Type" name="CCSDS_Type" />
+        <Argument argumentTypeRef="CCSDS_Sec_Hdr_Flag_Type" name="CCSDS_Sec_Hdr_Flag" />
+        <Argument argumentTypeRef="CCSDS_APID_Type" name="CCSDS_APID" />
+        <Argument argumentTypeRef="CCSDS_Group_Flags_Type" name="CCSDS_Group_Flags" />
+      </ArgumentList>
+      <CommandContainer name="CCSDSPacket">
+        <EntryList>
+          <ArgumentRefEntry argumentRef="CCSDS_Version" />
+          <ArgumentRefEntry argumentRef="CCSDS_Type" />
+          <ArgumentRefEntry argumentRef="CCSDS_Sec_Hdr_Flag" />
+          <ArgumentRefEntry argumentRef="CCSDS_APID" />
+          <ArgumentRefEntry argumentRef="CCSDS_Group_Flags" />
+          <FixedValueEntry name="CCSDS_Source_Sequence_Count" binaryValue="0000" sizeInBits="14" />
+          <FixedValueEntry name="CCSDS_Packet_Length" binaryValue="0000" sizeInBits="16" />
+        </EntryList>
+      </CommandContainer>
+    </MetaCommand>
+
+    <!-- MyProjectPacket: Boleh ganti nama, tetap abstract -->
+    <MetaCommand name="SimdhsPacket" abstract="true">
+      <BaseMetaCommand metaCommandRef="CCSDSPacket">
+        <ArgumentAssignmentList>
+          <ArgumentAssignment argumentName="CCSDS_Version" argumentValue="0" />
+          <ArgumentAssignment argumentName="CCSDS_Type" argumentValue="TC" />
+          <ArgumentAssignment argumentName="CCSDS_Sec_Hdr_Flag" argumentValue="NotPresent" />
+          <ArgumentAssignment argumentName="CCSDS_APID" argumentValue="110" />
+          <ArgumentAssignment argumentName="CCSDS_Group_Flags" argumentValue="Standalone" />
+        </ArgumentAssignmentList>
+      </BaseMetaCommand>
+      <ArgumentList>
+        <Argument argumentTypeRef="Packet_ID_Type" name="Packet_ID" />
+      </ArgumentList>
+      <CommandContainer name="SimdhsPacket">
+        <EntryList>
+          <ArgumentRefEntry argumentRef="Packet_ID" />
+        </EntryList>
+        <BaseContainer containerRef="CCSDSPacket" />
+      </CommandContainer>
+    </MetaCommand>
+
+    <!-- Command 1: Reboot -->
+    <MetaCommand name="Ping">
+      <BaseMetaCommand metaCommandRef="SimdhsPacket">
+        <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="Packet_ID" argumentValue="1" />
+        </ArgumentAssignmentList>
+      </BaseMetaCommand>
+      <CommandContainer name="Ping">
+        <EntryList />
+        <BaseContainer containerRef="SimdhsPacket" />
+      </CommandContainer>
+    </MetaCommand>
+
+    <!-- Command 2: SwitchVoltageOn -->
+    <MetaCommand name="SwitchVoltageOn" shortDescription="Switches a battery on">
+      <BaseMetaCommand metaCommandRef="SimdhsPacket">
+        <ArgumentAssignmentList>
+          <ArgumentAssignment argumentName="Packet_ID" argumentValue="2" />
+        </ArgumentAssignmentList>
+      </BaseMetaCommand>
+      <ArgumentList>
+        <Argument argumentTypeRef="Battery_Type" name="EngValue" shortDescription="Number of the battery" />
+      </ArgumentList>
+      <CommandContainer name="SwitchVoltageOn">
+        <EntryList>
+          <ArgumentRefEntry argumentRef="EngValue" />
+        </EntryList>
+        <BaseContainer containerRef="SimdhsPacket" />
+      </CommandContainer>
+    </MetaCommand>
+
+    <!-- Command 3: SetTemp -->
+    <MetaCommand name="SetTemp">
+      <BaseMetaCommand metaCommandRef="SimdhsPacket">
+        <ArgumentAssignmentList>
+          <ArgumentAssignment argumentName="Packet_ID" argumentValue="3" />
+        </ArgumentAssignmentList>
+      </BaseMetaCommand>
+      <ArgumentList>
+        <Argument argumentTypeRef="uint32_t" name="EngValue" />
+      </ArgumentList>
+      <CommandContainer name="SetTemp">
+        <EntryList>
+          <ArgumentRefEntry argumentRef="EngValue" />
+        </EntryList>
+        <BaseContainer containerRef="SimdhsPacket" />
+      </CommandContainer>
+    </MetaCommand>
+    
+    <!-- Command 4: ResetCounte -->
+    <MetaCommand name="ResetCounter">
+      <BaseMetaCommand metaCommandRef="SimdhsPacket">
+        <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="Packet_ID" argumentValue="4" />
+        </ArgumentAssignmentList>
+      </BaseMetaCommand>
+      <CommandContainer name="ResetCounter">
+        <EntryList />
+        <BaseContainer containerRef="SimdhsPacket" />
+      </CommandContainer>
+    </MetaCommand>
+  </MetaCommandSet>
+  </CommandMetaData>
+
+</SpaceSystem>
+
